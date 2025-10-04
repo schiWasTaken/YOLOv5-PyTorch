@@ -4,11 +4,7 @@ from .engine import train_one_epoch, evaluate
 from .distributed import init_distributed_mode, get_rank, get_world_size
 from .utils import *
 from .gpu import *
-
-try:
-    from .visualize import show, plot
-except ImportError:
-    pass
+from .visualize import show, plot
 
 DALI = False
 try:

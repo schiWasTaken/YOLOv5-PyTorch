@@ -1,1 +1,1 @@
-from .backbone_utils import darknet_pan_backbone
+from .backbone_utils import darknet_pan_backbone, mobilevit_backbone
