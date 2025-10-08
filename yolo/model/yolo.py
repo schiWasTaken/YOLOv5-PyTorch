@@ -12,7 +12,7 @@ from .model import MobileViT_S
 class YOLOv5(nn.Module):
     def __init__(self, num_classes, model_size=(0.33, 0.5),
                  match_thresh=4, giou_ratio=1, img_sizes=(320, 416),
-                 score_thresh=0.1, nms_thresh=0.6, detections=100):
+                 score_thresh=0.1, nms_thresh=0.6, detections=100, checkpoint_path='ckpts/model_best.pth.tar'):
         super().__init__()
         # original
         anchors = [
@@ -49,7 +49,7 @@ class YOLOv5(nn.Module):
         # net = load_mobilevit_weights(r"ckpts\model_best.pth.tar")  # returns MobileViT_S instance
         if isinstance(img_sizes, int):
             img_sizes = (img_sizes, img_sizes)
-        self.backbone = mobilevit_backbone(img_size=img_sizes[0])
+        self.backbone = mobilevit_backbone(img_size=img_sizes[0], checkpoint_path=checkpoint_path)
         
         in_channels_list = self.backbone.body.out_channels_list
         strides = (8, 16, 32)

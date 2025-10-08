@@ -64,8 +64,8 @@ def darknet_pan_backbone(depth_multiple, width_multiple): # 33 47 61 75
     fpn = PathAggregationNetwork(out_channels_list[2:], depth)
     return BackboneWithFPN(backbone, fpn)
 
-def mobilevit_backbone(img_size: int):
-    weights = torch.load(r'ckpts\model_best.pth.tar', weights_only=False, map_location=torch.device('cpu'))
+def mobilevit_backbone(img_size: int, checkpoint_path: str):
+    weights = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
     # print(weights['state_dict'])
     state_dict:dict = weights['state_dict']
     model = MobileViT_S(img_size=img_size, num_classes=1000)
