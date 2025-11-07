@@ -63,9 +63,8 @@ class YOLOv5(nn.Module):
         
         self.transformer = Transformer(
             min_size=img_sizes[0], max_size=img_sizes[1], stride=max(strides))
-    
-    def forward(self, images, targets=None):
-        def preprocess_tensor(img: torch.Tensor):
+        
+    def preprocess_tensor(self, img: torch.Tensor):
             # img shape: [C,H,W], dtype float or uint8
             img = F.center_crop(img, [640, 640])   # crop to square
             img = F.resize(img, [640, 640])        # resize to 256x256
@@ -73,7 +72,8 @@ class YOLOv5(nn.Module):
                 img = img.float() / 255.0          # normalize to [0,1] if needed
             return img
         
-        images = [preprocess_tensor(img) for img in images]
+    def forward(self, images, targets=None):
+        images = [self.preprocess_tensor(img) for img in images]
         images = torch.stack(images, dim=0)   # [B,C,256,256]
         
         images, targets, scale_factors, image_shapes = self.transformer(images, targets)
