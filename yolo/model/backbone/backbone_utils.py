@@ -18,7 +18,7 @@ class BackboneWithFPN(nn.Module):
         # x = self.fpn(x)
         return x
     
-class MyAwesomeLayers(nn.ModuleDict):
+class MobileViTFeatureExtractor(nn.ModuleDict):
     def __init__(self, model: nn.Module):
         self.out_channels_list = [96, 128, 160]
         layers = OrderedDict()
@@ -74,5 +74,5 @@ def mobilevit_backbone(img_size: int, checkpoint_path: str):
         state_dict[key.replace('module.', '')] = state_dict.pop(key)
     model.load_state_dict(state_dict)
 
-    my_god=MyAwesomeLayers(model)
-    return BackboneWithFPN(my_god, None)
+    feature_extractor=MobileViTFeatureExtractor(model)
+    return BackboneWithFPN(feature_extractor, None)
