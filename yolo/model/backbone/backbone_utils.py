@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import os
 from yolo.model.model import MobileViT_S
 from .path_aggregation_network import PathAggregationNetwork
 from .utils import IntermediateLayerGetter
@@ -64,15 +65,21 @@ def darknet_pan_backbone(depth_multiple, width_multiple): # 33 47 61 75
     fpn = PathAggregationNetwork(out_channels_list[2:], depth)
     return BackboneWithFPN(backbone, fpn)
 
-def mobilevit_backbone(img_size: int, checkpoint_path: str):
-    weights = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
-    # print(weights['state_dict'])
-    state_dict:dict = weights['state_dict']
+def mobilevit_backbone(img_size: int, checkpoint_path: str = None):
     model = MobileViT_S(img_size=img_size, num_classes=1000)
-    dir(model)
-    for key in list(state_dict.keys()):
-        state_dict[key.replace('module.', '')] = state_dict.pop(key)
-    model.load_state_dict(state_dict)
 
-    feature_extractor=MobileViTFeatureExtractor(model)
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        weights = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+        state_dict: dict = weights['state_dict'] if 'state_dict' in weights else weights
+
+        # remove "module." prefixes if any
+        for key in list(state_dict.keys()):
+            state_dict[key.replace('module.', '')] = state_dict.pop(key)
+
+        model.load_state_dict(state_dict, strict=False)
+        print(f"Loaded pretrained weights from {checkpoint_path}")
+    else:
+        print("No checkpoint provided, initializing backbone from scratch.")
+
+    feature_extractor = MobileViTFeatureExtractor(model)
     return BackboneWithFPN(feature_extractor, None)
