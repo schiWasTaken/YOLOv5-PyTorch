@@ -239,7 +239,6 @@ def generate_results(model, data_loader, device, args):
     for lst in all_preds_per_proc:
         merged_preds.extend(lst)
 
-    # Rank 0: save merged_results (already done) and compute metrics
     if distributed.get_rank() == 0:
         # already wrote merged_results to args.results above
         # compute confusion / per-class metrics
@@ -247,9 +246,9 @@ def generate_results(model, data_loader, device, args):
         conf = build_confusion_matrix(merged_gts, merged_preds, num_classes=num_classes, iou_threshold=0.5, gt_box_format='xyxy')
         metrics = per_class_metrics_from_conf(conf, class_names=list(ann_labels))
 
-        per_class_path = args.results + ".per_class.json"
-        save_metrics(per_class_path, conf, metrics, list(ann_labels))
-        print(f"Saved per-class metrics to {per_class_path}")
+        results_path = args.results
+        save_metrics(results_path, conf, metrics, list(ann_labels))
+        print(f"Saved per-class metrics to {results_path}")
 
     return m_m.sum / iters
     
