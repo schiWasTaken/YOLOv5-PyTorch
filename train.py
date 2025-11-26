@@ -1,24 +1,52 @@
 import argparse
 import math
+import logging
 import os
+from datetime import datetime
 import re
 import time
-
 import torch
-
 import yolo
     
+def setup_logger(log_dir):
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = os.path.join(log_dir, f"train_{timestamp}.log")
+
+    logger = logging.getLogger("train")
+    logger.setLevel(logging.INFO)
+
+    # file handler
+    fh = logging.FileHandler(log_path)
+    fh.setLevel(logging.INFO)
+
+    # console handler (keeps prints visible in Colab / VSCode)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+
+    # format
+    fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    fh.setFormatter(fmt)
+    ch.setFormatter(fmt)
+
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
+    return logger
 
 def main(args):
+    logger = setup_logger(os.path.join(args.root, "logs"))
+    logger.info("Starting training")
+
     # Prepare for distributed training
     yolo.init_distributed_mode(args)
     begin_time = time.time()
-    print(time.asctime(time.localtime(begin_time)))
+    logger.info(time.asctime(time.localtime(begin_time)))
     
     device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else "cpu")
     cuda = device.type == "cuda"
     if cuda: yolo.get_gpu_prop(show=True)
-    print("\ndevice: {}".format(device))
+    logger.info("\ndevice: {}".format(device))
     
     # Automatic mixed precision
     args.amp = False
@@ -26,7 +54,7 @@ def main(args):
         capability = torch.cuda.get_device_capability()[0]
         if capability >= 7: # 7 refers to RTX series GPUs, e.g. 2080Ti, 2080, Titan RTX
             args.amp = True
-            print("Automatic mixed precision (AMP) is enabled!")
+            logger.info("Automatic mixed precision (AMP) is enabled!")
         
     # ---------------------- prepare data loader ------------------------------- #
     
@@ -43,7 +71,7 @@ def main(args):
         
         # DALICOCODataLoader behaves like PyTorch's DataLoader.
         # It consists of Dataset, DataLoader and DataPrefetcher. Thus it outputs CUDA tensor.
-        print("Nvidia DALI is utilized!")
+        logger.info("Nvidia DALI is utilized!")
         d_train = yolo.DALICOCODataLoader(
             file_roots[0], ann_files[0], args.batch_size, collate_fn=yolo.collate_wrapper,
             drop_last=True, shuffle=True, device_id=args.gpu, world_size=args.world_size)
@@ -86,7 +114,7 @@ def main(args):
     
     # -------------------------------------------------------------------------- #
 
-    print(args)
+    logger.info(args)
     yolo.setup_seed(args.seed)
     
     model_sizes = {"small": (0.33, 0.5), "medium": (0.67, 0.75), "large": (1, 1), "extreme": (1.33, 1.25)}
@@ -116,8 +144,8 @@ def main(args):
     optimizer.add_param_group({"params": params["others"]})
     lr_lambda = lambda x: math.cos(math.pi * x / ((x // args.period + 1) * args.period) / 2) ** 2 * 0.9 + 0.1
 
-    print("Optimizer param groups: ", end="")
-    print(", ".join("{} {}".format(len(v), k) for k, v in params.items()))
+    logger.info("Optimizer param groups: ", end="")
+    logger.info(", ".join("{} {}".format(len(v), k) for k, v in params.items()))
     del params
     if cuda: torch.cuda.empty_cache()
        
@@ -137,19 +165,19 @@ def main(args):
         if cuda: torch.cuda.empty_cache()
 
     since = time.time()
-    print("\nalready trained: {} epochs; to {} epochs".format(start_epoch, args.epochs))
+    logger.info("\nalready trained: {} epochs; to {} epochs".format(start_epoch, args.epochs))
     
     # ------------------------------- train ------------------------------------ #
         
     for epoch in range(start_epoch, args.epochs):
-        print("\nepoch: {}".format(epoch + 1))
+        logger.info("\nepoch: {}".format(epoch + 1))
         
         if not DALI and args.distributed:
             sampler_train.set_epoch(epoch)
             
         A = time.time()
         args.lr_epoch = lr_lambda(epoch) * args.lr
-        print("lr_epoch: {:.4f}, factor: {:.4f}".format(args.lr_epoch, lr_lambda(epoch)))
+        logger.info("lr_epoch: {:.4f}, factor: {:.4f}".format(args.lr_epoch, lr_lambda(epoch)))
         iter_train = yolo.train_one_epoch(model, optimizer, d_train, device, epoch, args, ema)
         A = time.time() - A
         
@@ -159,9 +187,9 @@ def main(args):
 
         trained_epoch = epoch + 1
         if yolo.get_rank() == 0:
-            print("training: {:.2f} s, evaluation: {:.2f} s".format(A, B))
+            logger.info("training: {:.2f} s, evaluation: {:.2f} s".format(A, B))
             yolo.collect_gpu_info("yolov5s", [args.batch_size / iter_train, args.batch_size / iter_eval])
-            print(eval_output.get_AP())
+            logger.info(eval_output.get_AP())
             
             yolo.save_ckpt(
                 model_without_ddp, optimizer, trained_epoch, args.ckpt_path,
@@ -176,9 +204,9 @@ def main(args):
         
     # -------------------------------------------------------------------------- #
 
-    print("\ntotal time of this training: {:.2f} s".format(time.time() - since))
+    logger.info("\ntotal time of this training: {:.2f} s".format(time.time() - since))
     if start_epoch < args.epochs:
-        print("already trained: {} epochs\n".format(trained_epoch))
+        logger.info("already trained: {} epochs\n".format(trained_epoch))
     
     
 if __name__ == "__main__":
