@@ -84,8 +84,9 @@ class YOLOv5(nn.Module):
             return losses
         else:
             max_size = max(images.shape[2:])
-            results, losses = self.head(features, targets, image_shapes, scale_factors, max_size)
-            return results, losses
+            results, losses, batch_gts, batch_preds = self.head(features, targets, image_shapes, scale_factors, max_size)
+
+            return results, losses, batch_gts, batch_preds
         
     def fuse(self):
         # fusing conv and bn layers

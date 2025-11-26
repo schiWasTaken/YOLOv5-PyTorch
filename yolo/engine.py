@@ -1,9 +1,9 @@
 import json
 import sys
 import time
-
+import numpy as np
 import torch
-
+from metrics.detection_metrics import build_confusion_matrix, per_class_metrics_from_conf, save_metrics
 from . import distributed
 from .utils import Meter, TextArea
 try:
@@ -123,6 +123,8 @@ def generate_results(model, data_loader, device, args):
         
     t_m = Meter("total")
     m_m = Meter("model")
+    all_gts = []   # list of dicts: {'boxes': np.ndarray (M,4), 'labels': np.ndarray (M,)}
+    all_preds = [] # list of dicts: {'boxes': np.ndarray (N,4), 'labels': np.ndarray (N,), 'scores': np.ndarray (N,)}
     coco_results = []
     model.eval()
     A = time.time()
@@ -147,6 +149,55 @@ def generate_results(model, data_loader, device, args):
         outputs = [{k: v.cpu() for k, v in out.items()} for out in outputs]
         predictions = {tgt["image_id"].item(): out for tgt, out in zip(targets, outputs)}
         coco_results.extend(prepare_for_coco(predictions, ann_labels))
+        # --- accumulate preds & gts for per-class metrics (insert here) ---
+        for tgt, out in zip(targets, outputs):
+            # --- parse GTs (supports dict or fallback tensor formats) ---
+            # If tgt is a dict with 'boxes' and 'labels' (recommended)
+            if isinstance(tgt, dict):
+                gt_boxes = tgt.get("boxes", None)
+                gt_labels = tgt.get("labels", None)
+            else:
+                # fallback: targets might be a tensor of shape (M,6) like [img_id, cls, x,y,w,h]
+                # or a tensor per-batch. We skip fallback parsing here unless needed.
+                gt_boxes, gt_labels = None, None
+
+            # Convert GT tensors -> numpy arrays (xyxy expected)
+            if torch.is_tensor(gt_boxes):
+                gt_boxes_np = gt_boxes.cpu().numpy()
+            else:
+                gt_boxes_np = np.array(gt_boxes) if gt_boxes is not None else np.zeros((0,4))
+
+            if torch.is_tensor(gt_labels):
+                gt_labels_np = gt_labels.cpu().numpy().astype(int)
+            else:
+                gt_labels_np = np.array(gt_labels).astype(int) if gt_labels is not None else np.zeros((0,), dtype=int)
+
+            all_gts.append({"boxes": gt_boxes_np, "labels": gt_labels_np})
+
+            # --- parse predictions (out already on CPU) ---
+            # out expected: dict with keys 'boxes','labels','scores'
+            pred_boxes = out.get("boxes", None)
+            pred_labels = out.get("labels", None)
+            pred_scores = out.get("scores", None)
+
+            # convert preds to numpy
+            if torch.is_tensor(pred_boxes):
+                pred_boxes_np = pred_boxes.numpy()
+            else:
+                pred_boxes_np = np.array(pred_boxes) if pred_boxes is not None else np.zeros((0,4))
+
+            if torch.is_tensor(pred_labels):
+                pred_labels_np = pred_labels.numpy().astype(int)
+            else:
+                pred_labels_np = np.array(pred_labels).astype(int) if pred_labels is not None else np.zeros((0,), dtype=int)
+
+            if torch.is_tensor(pred_scores):
+                pred_scores_np = pred_scores.numpy()
+            else:
+                pred_scores_np = np.array(pred_scores) if pred_scores is not None else np.zeros((0,), dtype=float)
+
+            all_preds.append({"boxes": pred_boxes_np, "labels": pred_labels_np, "scores": pred_scores_np})
+        # --- end accumulation ---
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -163,8 +214,35 @@ def generate_results(model, data_loader, device, args):
     for res in all_results:
         merged_results.extend(res)
         
+    # gather the per-process gt/pred lists
+    try:
+        all_gts_per_proc = distributed.all_gather(all_gts)
+        all_preds_per_proc = distributed.all_gather(all_preds)
+    except Exception:
+        # if distributed helper unavailable or single-process, just wrap local lists
+        all_gts_per_proc = [all_gts]
+        all_preds_per_proc = [all_preds]
+
+    # flatten lists from all processes
+    merged_gts = []
+    for lst in all_gts_per_proc:
+        merged_gts.extend(lst)
+
+    merged_preds = []
+    for lst in all_preds_per_proc:
+        merged_preds.extend(lst)
+
+    # Rank 0: save merged_results (already done) and compute metrics
     if distributed.get_rank() == 0:
-        json.dump(merged_results, open(args.results, "w"))
-        
+        # already wrote merged_results to args.results above
+        # compute confusion / per-class metrics
+        num_classes = len(ann_labels)  # ann_labels already available in generate_results
+        conf = build_confusion_matrix(merged_gts, merged_preds, num_classes=num_classes, iou_threshold=0.5, gt_box_format='xyxy')
+        metrics = per_class_metrics_from_conf(conf, class_names=list(ann_labels))
+
+        per_class_path = args.results + ".per_class.json"
+        save_metrics(per_class_path, conf, metrics, list(ann_labels))
+        print(f"Saved per-class metrics to {per_class_path}")
+
     return m_m.sum / iters
     

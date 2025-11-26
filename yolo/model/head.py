@@ -36,9 +36,40 @@ class Head(nn.Module):
             losses = {}
             if self.eval_with_loss:
                 losses = self.compute_loss(preds, targets)
-                
+
             results = self.inference(preds, image_shapes, scale_factors, max_size)
-            return results, losses
+
+            # ----------------------------
+            # NEW: accumulate GT + preds
+            # ----------------------------
+            batch_gts = []
+            batch_preds = []
+
+            # zip targets with results
+            for tgt, res in zip(targets, results):
+                # --- GT ---
+                gt_boxes = tgt.get("boxes", torch.zeros((0,4), device=preds[0].device))
+                gt_labels = tgt.get("labels", torch.zeros((0,), device=preds[0].device))
+
+                batch_gts.append({
+                    "boxes": gt_boxes.detach().cpu().numpy(),
+                    "labels": gt_labels.detach().cpu().numpy().astype(int),
+                })
+
+                # --- Predictions ---
+                pred_boxes = res["boxes"]
+                pred_labels = res["labels"]
+                pred_scores = res["scores"]
+
+                batch_preds.append({
+                    "boxes": pred_boxes.detach().cpu().numpy(),
+                    "labels": pred_labels.detach().cpu().numpy().astype(int),
+                    "scores": pred_scores.detach().cpu().numpy()
+                })
+
+            # Return everything
+            return results, losses, batch_gts, batch_preds
+
         
     def compute_loss(self, preds, targets):
         dtype = preds[0].dtype
