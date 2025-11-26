@@ -138,9 +138,16 @@ def generate_results(model, data_loader, device, args):
         S = time.time()
         if args.amp:
             with torch.cuda.amp.autocast():
-                outputs, losses = model(images, targets)
+                out = model(images, targets)
         else:
-            outputs, losses = model(images, targets)
+            out = model(images, targets)
+
+        try:
+            outputs, losses, batch_gts, batch_preds = out
+        except ValueError:
+            outputs, losses = out
+            batch_gts, batch_preds = None, None
+
         m_m.update(time.time() - S)
         
         if losses and i % 10 == 0:

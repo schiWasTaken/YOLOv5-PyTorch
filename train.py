@@ -249,7 +249,7 @@ if __name__ == "__main__":
         args.results = os.path.join(os.path.dirname(args.ckpt_path), "results.json")
         
     begin_time = time.time()
-    logger.info("{}.txt".format(int(begin_time)))
+    print("{}.txt".format(int(begin_time)))
     
     main(args)
     
