@@ -15,7 +15,9 @@ def setup_logger(log_dir):
 
     logger = logging.getLogger("train")
     logger.setLevel(logging.INFO)
-
+    
+    if logger.hasHandlers():
+        logger.handlers.clear()
     # file handler
     fh = logging.FileHandler(log_path)
     fh.setLevel(logging.INFO)

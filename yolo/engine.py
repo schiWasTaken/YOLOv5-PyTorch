@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import time
 import numpy as np
@@ -240,26 +241,59 @@ def generate_results(model, data_loader, device, args):
         merged_preds.extend(lst)
 
     if distributed.get_rank() == 0:
-        # ---- COCO detection results stay in args.results ----
-        # merged_results was already written to args.results above
+        # ensure results dir exists
+        results_dir = os.path.dirname(args.results) or "."
+        os.makedirs(results_dir, exist_ok=True)
 
-        # ---- Compute confusion/per-class metrics ----
-        num_classes = len(ann_labels)
-        conf = build_confusion_matrix(
-            merged_gts, merged_preds,
-            num_classes=num_classes,
-            iou_threshold=0.5,
-            gt_box_format='xyxy'
-        )
-        metrics = per_class_metrics_from_conf(
-            conf, class_names=list(ann_labels)
-        )
+        # 1) Save the merged COCO detection results (required by CocoEvaluator)
+        with open(args.results, "w") as f:
+            json.dump(merged_results, f)
+        print(f"Saved COCO detection results to {args.results}")
 
-        # ---- Save metrics to a DIFFERENT file ----
-        per_class_path = args.results.replace(".json", ".per_class.json")
+        # 2) Compute confusion matrix and per-class metrics from merged_gts / merged_preds
+        try:
+            num_classes = len(ann_labels)
+        except Exception:
+            num_classes = None
 
-        save_metrics(per_class_path, conf, metrics, list(ann_labels))
-        print(f"Saved per-class metrics to {per_class_path}")
+        # Only compute metrics if we have any gathered GTs/preds
+        if merged_gts and merged_preds and num_classes is not None:
+            conf = build_confusion_matrix(
+                merged_gts,
+                merged_preds,
+                num_classes=num_classes,
+                iou_threshold=0.5,
+                gt_box_format='xyxy'
+            )
+            metrics = per_class_metrics_from_conf(conf, class_names=list(ann_labels))
+
+            # 3) Make everything JSON-serializable
+            per_class_payload = {
+                "class_names": list(ann_labels),
+                "confusion_matrix": conf.tolist() if hasattr(conf, "tolist") else conf,
+                "metrics": {}
+            }
+
+            # metrics is typically {class_id: {tp:..., fp:..., ...}, ...}
+            # convert numpy types to native Python types
+            for cls_id, cls_stats in metrics.items():
+                out_stats = {}
+                for k, v in cls_stats.items():
+                    if isinstance(v, (np.integer,)):
+                        out_stats[k] = int(v)
+                    elif isinstance(v, (np.floating,)):
+                        out_stats[k] = float(v)
+                    else:
+                        out_stats[k] = v
+                per_class_payload["metrics"][str(cls_id)] = out_stats
+
+            per_class_path = os.path.join(results_dir, "results.per_class.json")
+            with open(per_class_path, "w") as f:
+                json.dump(per_class_payload, f, indent=2)
+            print(f"Saved per-class metrics to {per_class_path}")
+        else:
+            print("No GTs/preds or ann_labels empty — skipping per-class metrics.")
+
 
 
     return m_m.sum / iters
