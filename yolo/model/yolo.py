@@ -28,8 +28,8 @@ class YOLOv5(nn.Module):
         # ]
         loss_weights = {"loss_box": 0.05, "loss_obj": 1.0, "loss_cls": 0.5}
         
-        # self.backbone = darknet_pan_backbone(
-        #     depth_multiple=model_size[0], width_multiple=model_size[1]) # 7.5M parameters
+        self.backbone = darknet_pan_backbone(
+            depth_multiple=model_size[0], width_multiple=model_size[1]) # 7.5M parameters
         # # wherever you assemble the model
         # def load_mobilevit_weights(model_path):
         #     # Create an instance of the MobileViT model
@@ -49,7 +49,7 @@ class YOLOv5(nn.Module):
         # net = load_mobilevit_weights(r"ckpts\model_best.pth.tar")  # returns MobileViT_S instance
         if isinstance(img_sizes, int):
             img_sizes = (img_sizes, img_sizes)
-        self.backbone = mobilevit_backbone(img_size=img_sizes[0], checkpoint_path=checkpoint_path)
+        # self.backbone = mobilevit_backbone(img_size=img_sizes[0], checkpoint_path=checkpoint_path)
         
         in_channels_list = self.backbone.body.out_channels_list
         strides = (8, 16, 32)
