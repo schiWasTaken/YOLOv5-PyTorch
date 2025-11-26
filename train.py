@@ -144,8 +144,8 @@ def main(args):
     optimizer.add_param_group({"params": params["others"]})
     lr_lambda = lambda x: math.cos(math.pi * x / ((x // args.period + 1) * args.period) / 2) ** 2 * 0.9 + 0.1
 
-    logger.info("Optimizer param groups: ", end="")
-    logger.info(", ".join("{} {}".format(len(v), k) for k, v in params.items()))
+    logger.info("Optimizer param groups: %s", ", ".join("{} {}".format(len(v), k) for k, v in params.items()))
+
     del params
     if cuda: torch.cuda.empty_cache()
        
@@ -249,7 +249,7 @@ if __name__ == "__main__":
         args.results = os.path.join(os.path.dirname(args.ckpt_path), "results.json")
         
     begin_time = time.time()
-    print("{}.txt".format(int(begin_time)))
+    logger.info("{}.txt".format(int(begin_time)))
     
     main(args)
     
