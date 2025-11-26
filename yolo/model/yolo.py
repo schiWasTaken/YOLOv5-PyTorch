@@ -67,7 +67,7 @@ class YOLOv5(nn.Module):
     def preprocess_tensor(self, img: torch.Tensor):
             # img shape: [C,H,W], dtype float or uint8
             img = F.center_crop(img, [640, 640])   # crop to square
-            img = F.resize(img, [640, 640])        # resize to 256x256
+            img = F.resize(img, [256, 256])        # resize to 256x256
             if img.dtype != torch.float32:
                 img = img.float() / 255.0          # normalize to [0,1] if needed
             return img
