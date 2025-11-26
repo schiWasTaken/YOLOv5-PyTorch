@@ -1,7 +1,7 @@
 **/*.jpg
 **/*.pth
 ckpts/
-
+mnist_coco/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
