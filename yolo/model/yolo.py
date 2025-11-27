@@ -69,7 +69,10 @@ class YOLOv5(nn.Module):
             img = F.center_crop(img, [640, 640])   # crop to square
             img = F.resize(img, [256, 256])        # resize to 256x256
             if img.dtype != torch.float32:
-                img = img.float() / 255.0          # normalize to [0,1] if needed
+                img = img.float() / 255.0 
+            if img.shape[0] == 1:
+                img = img.repeat(3, 1, 1)
+            # normalize to [0,1] if needed
             return img
         
     def forward(self, images, targets=None):
